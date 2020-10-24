@@ -5,7 +5,7 @@ Lidars (LIgh Detection And Ranging) measure distances by illuminating the target
 Link to the article: http://charleslabs.fr/en/project-3D+Lidar+Scanner+MK2
 
 This is my 3D Lidar:
-[Picture of the 3D lidar](./pictures/lidar_picture.jpg)
+![Picture of the 3D lidar](./pictures/lidar_picture.jpg)
 
 This repository contains the source files to build it:
 * Mechanical: STL files for 3D-printing, linkages bending patterns and SolidWorks source files,

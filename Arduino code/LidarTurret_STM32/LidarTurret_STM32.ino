@@ -1,10 +1,15 @@
 // Includes
 #include <Servo.h>
+#include <Wire.h>
+#include <stdio.h>
+#include <VL53L0X.h>
+// #include <vl53l0x_class.h>
 
 // TF-Mini or TF-Luna
 #define TFMINI_BAUDRATE 115200 // bauds
 #define TFMINI_DATARATE 10.0f // ms
 int distance = 0;
+uint32_t dist;
 int strength = 0;
 float temp = 0;
 
@@ -26,12 +31,27 @@ const int TIME_PER_PULSE = (TIME_PER_REV * 1000.0f)/ PULSE_PER_REV; // us
 const int PULSE_PER_DATAPOINT = (TFMINI_DATARATE * 1000.0f) / TIME_PER_PULSE;
 
 // External communication
-#define EXTERNAL_BAUDRATE 115200 // bauds
+#define EXTERNAL_BAUDRATE 9600 // bauds
 char serial_buffer[15];
 float theta,phi,rho;
 
+// Sharp pins
+#define xshut PB4
+// #define SHARP_BAUDRATE 9600
+
+// I2C2 init
+// TwoWire WIRE2(2,I2C_FAST_MODE);
+// #define Wire WIRE2
+
+// Sensor Obj
+VL53L0X sensor;
+
+
 // the setup function runs once when you press reset or power the board
 void setup() {
+  // Led.
+  pinMode(LED_BUILTIN, OUTPUT);
+  
   // Stepper
   pinMode(DIR_PIN, OUTPUT);
   pinMode(STEP_PIN, OUTPUT);
@@ -44,12 +64,33 @@ void setup() {
   
   // Serial ports
   Serial.begin(EXTERNAL_BAUDRATE); // USB
-  Serial3.begin(TFMINI_BAUDRATE); // TF mini
-  flushSerial3();
+  // Serial3.begin(SHARP_BAUDRATE); // TF mini | Sharp
+  // flushSerial3();
   
   // Center servos
-  //servo_pos(SERVO_POS_MAX   );
-  //for(;;){}
+  servo_pos(SERVO_POS_MAX);
+  // for(;;){}
+
+  // VL52L0X I2C init
+  Wire.begin();
+
+  // Sensor lib1
+  sensor.setTimeout(500);
+  if (!sensor.init(&Wire))
+  {
+    Serial.println("Failed to detect and initialize sensor!");
+    while (1) {}
+  }
+  // Start continuous back-to-back mode (take readings as
+  // fast as possible).  To use continuous timed mode
+  // instead, provide a desired inter-measurement period in
+  // ms (e.g. sensor.startContinuous(100)).
+  sensor.startContinuous();
+
+  // xshut pin
+  pinMode(xshut,INPUT_PULLUP);
+  digitalWrite(xshut,HIGH);
+
 }
 
 // Scanning fuction. Adapt to your needs!
@@ -62,9 +103,9 @@ void loop() {
   digitalWrite(STEP_PIN, LOW);
   delayMicroseconds(TIME_PER_PULSE);
   pulses ++;
-
   if((pulses + offset)%PULSE_PER_DATAPOINT == 0){
-    getTFminiData(&distance, &strength, &temp);
+    // getTFminiData(&distance, &strength, &temp);
+    getSharpData(&distance);
     send_pos();
   }
 
@@ -81,8 +122,9 @@ void loop() {
 // Send X Y Z STRENGTH to the computer
 // @TODO: reverse kinematics
 void send_pos(){
-  if(distance == 0) return;
-  
+  if(distance == 0) {
+    return;
+  }  
   theta = (float)pulses*360.0f/PULSE_PER_REV; //compute angle from motor pulses
   theta *= PI / 180.0f; // convert to radians
   
@@ -91,8 +133,8 @@ void send_pos(){
   phi *= PI / 180.0f; // convert to radians
   
   rho = distance - 5.5f; // rho is the LIDAR distance
-  
-  sprintf(serial_buffer,"%d\t%d\t%d\t%d\n\0",(int)(rho*cos(phi)*cos(theta)),(int)(rho*cos(phi)*sin(theta)),(int)(rho*sin(phi)),strength);
+
+  sprintf(serial_buffer,"%d\t%d\t%d\t%ld mm\n\0",(int)(rho*cos(phi)*cos(theta)),(int)(rho*cos(phi)*sin(theta)),(int)(rho*sin(phi)), distance);
   Serial.print(serial_buffer);
 }
 
@@ -104,42 +146,52 @@ void servo_pos(int angle){
     servo_d.write(angle);
 }
 
-// Fetchs data from the Lidar
-void getTFminiData(int* distance, int* strength, float* temp) {
-  static char i = 0;
-  char j = 0;
-  int checksum = 0;
-  static int rx[9];
-  while(1){
-  if(Serial3.available())
-  { 
-      rx[i] = Serial3.read();
-//      Serial.println(rx[i],HEX);
-      if(rx[0] != 0x59) {
-        i = 0;
-      } else if(i == 1 && rx[1] != 0x59) {
-        i = 0;
-      } else if(i == 8) {
-        for(j = 0; j < 8; j++) {
-          checksum += rx[j];
-        }
-        if(rx[8] == (checksum % 256)) {
-          *distance = rx[2] + rx[3] * 256;
-          *strength = rx[4] + rx[5] * 256;
-          *temp = (rx[6] + rx[7] * 256.0f)/8 - 256;
-        }
-        i = 0;
-        break;
-      } else
-      {
-        i++;
-      }
-    }
-  }
-  flushSerial3();
+// // Fetchs data from the Lidar
+// void getTFminiData(int* distance, int* strength, float* temp) {
+//   static char i = 0;
+//   char j = 0;
+//   int checksum = 0;
+//   static int rx[9];
+//   while(1){
+//   if(Serial3.available())
+//   { 
+//       rx[i] = Serial3.read();
+// //      Serial.println(rx[i],HEX);
+//       if(rx[0] != 0x59) {
+//         i = 0;
+//       } else if(i == 1 && rx[1] != 0x59) {
+//         i = 0;
+//       } else if(i == 8) {
+//         for(j = 0; j < 8; j++) {
+//           checksum += rx[j];
+//         }
+//         if(rx[8] == (checksum % 256)) {
+//           *distance = rx[2] + rx[3] * 256;
+//           *strength = rx[4] + rx[5] * 256;
+//           *temp = (rx[6] + rx[7] * 256.0f)/8 - 256;
+//         }
+//         i = 0;
+//         break;
+//       } else
+//       {
+//         i++;
+//       }
+//     }
+//   }
+//   flushSerial3();
+// }
+
+void getSharpData(int* distance){
+
+  *distance = sensor.readRangeContinuousMillimeters();
+  if (sensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); }
+  Serial.println();
+  delay(100);
+
 }
 
+
 // Flushes the INPUT serial buffer
-void flushSerial3(){
-  while(Serial3.available()){Serial3.read();}
-}
+// void flushSerial3(){
+//   while(Serial3.available()){Serial3.read();}
+// }

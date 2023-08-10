@@ -34,6 +34,6 @@ This is the projects' BOM:
 
 
 Some extra notes from authors of the VL53L0x_compatible branch:
--driver replaced with TMC2209 due to its better sustaiability and codable current control of the driver in compare with DRV8825.
--VL53L0x is range sensor with lower range.
--VL53L0x needs no ftdi. Data goes through I2C.
+* driver replaced with TMC2209 due to its better sustaiability and codable current control of the driver in compare with DRV8825,
+* VL53L0x is range sensor with lower range,
+* VL53L0x needs no ftdi. Data goes through I2C,

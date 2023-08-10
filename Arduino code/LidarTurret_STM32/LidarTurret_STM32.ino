@@ -8,12 +8,11 @@
 // #define TFMINI_BAUDRATE 115200 // bauds
 // #define TFMINI_DATARATE 10.0f // ms
 
-// Sharp 
+// SHARP
 #define xshut PB4
 #define SHARP_BAUDRATE 115200 // bauds
 #define SHARP_DATARATE 10.0f // ms
 int distance = 0;
-uint32_t dist;
 int strength = 0;
 float temp = 0;
 

@@ -3,11 +3,15 @@
 #include <Wire.h>
 #include <stdio.h>
 #include <VL53L0X.h>
-// #include <vl53l0x_class.h>
 
-// TF-Mini or TF-Luna
-#define TFMINI_BAUDRATE 115200 // bauds
-#define TFMINI_DATARATE 10.0f // ms
+// // TF-Mini or TF-Luna
+// #define TFMINI_BAUDRATE 115200 // bauds
+// #define TFMINI_DATARATE 10.0f // ms
+
+// Sharp 
+#define xshut PB4
+#define SHARP_BAUDRATE 115200 // bauds
+#define SHARP_DATARATE 10.0f // ms
 int distance = 0;
 uint32_t dist;
 int strength = 0;
@@ -23,21 +27,18 @@ Servo servo_g, servo_d;
 int servo_angle = SERVO_POS_MIN; // current servo pos
 
 // Stepper
+#define EN PB14
 #define DIR_PIN PB15 
 #define STEP_PIN PA8
-#define PULSE_PER_REV 2400 // PPR_motor * Gear_reduction * Microstepping = 200*3/2*16
-#define TIME_PER_REV 500.0f // ms
+#define PULSE_PER_REV 300 // PPR_motor * Gear_reduction * Microstepping = 200*3/2*16
+#define TIME_PER_REV 250.0f // ms
 const int TIME_PER_PULSE = (TIME_PER_REV * 1000.0f)/ PULSE_PER_REV; // us
-const int PULSE_PER_DATAPOINT = (TFMINI_DATARATE * 1000.0f) / TIME_PER_PULSE;
+const int PULSE_PER_DATAPOINT = (SHARP_DATARATE * 1000.0f) / TIME_PER_PULSE;
 
 // External communication
 #define EXTERNAL_BAUDRATE 9600 // bauds
-char serial_buffer[15];
+char serial_buffer[30];
 float theta,phi,rho;
-
-// Sharp pins
-#define xshut PB4
-// #define SHARP_BAUDRATE 9600
 
 // I2C2 init
 // TwoWire WIRE2(2,I2C_FAST_MODE);
@@ -46,16 +47,17 @@ float theta,phi,rho;
 // Sensor Obj
 VL53L0X sensor;
 
-
 // the setup function runs once when you press reset or power the board
 void setup() {
-  // Led.
+  // Led to be toggled as a flag of process
   pinMode(LED_BUILTIN, OUTPUT);
   
   // Stepper
+  pinMode(EN, OUTPUT);
   pinMode(DIR_PIN, OUTPUT);
   pinMode(STEP_PIN, OUTPUT);
   digitalWrite(DIR_PIN,HIGH);
+  digitalWrite(EN, LOW);
   
   // Servos
   servo_g.attach(SERVO_G_PIN);
@@ -69,12 +71,11 @@ void setup() {
   
   // Center servos
   servo_pos(SERVO_POS_MAX);
-  // for(;;){}
 
   // VL52L0X I2C init
   Wire.begin();
 
-  // Sensor lib1
+  // Sensor init
   sensor.setTimeout(500);
   if (!sensor.init(&Wire))
   {
@@ -90,7 +91,6 @@ void setup() {
   // xshut pin
   pinMode(xshut,INPUT_PULLUP);
   digitalWrite(xshut,HIGH);
-
 }
 
 // Scanning fuction. Adapt to your needs!
@@ -103,6 +103,7 @@ void loop() {
   digitalWrite(STEP_PIN, LOW);
   delayMicroseconds(TIME_PER_PULSE);
   pulses ++;
+
   if((pulses + offset)%PULSE_PER_DATAPOINT == 0){
     // getTFminiData(&distance, &strength, &temp);
     getSharpData(&distance);
@@ -134,19 +135,31 @@ void send_pos(){
   
   rho = distance - 5.5f; // rho is the LIDAR distance
 
-  sprintf(serial_buffer,"%d\t%d\t%d\t%ld mm\n\0",(int)(rho*cos(phi)*cos(theta)),(int)(rho*cos(phi)*sin(theta)),(int)(rho*sin(phi)), distance);
+  sprintf(serial_buffer,"%d\t%d\t%d\t%ld\n\0",(int)(rho*cos(phi)*cos(theta)),(int)(rho*cos(phi)*sin(theta)),(int)(rho*sin(phi)), distance);
   Serial.print(serial_buffer);
 }
 
 // Move both servos to change the mirror angle
 void servo_pos(int angle){
-  if(angle > SERVO_POS_MAX || angle < SERVO_POS_MIN)
-  return;
-    servo_g.write(180 - angle);
-    servo_d.write(angle);
+  if(angle >= SERVO_POS_MAX || angle <= SERVO_POS_MIN) return;
+
+  servo_g.write(180 - angle);
+  // Serial_print("g: ");
+  // Serial_println(180 - angle);
+  servo_d.write(angle);
+  // Serial_print("d: ");
+  // Serial_println(angle);
 }
 
-// // Fetchs data from the Lidar
+// Fetch data from the SHARP
+void getSharpData(int* distance){
+  *distance = sensor.readRangeContinuousMillimeters();
+  if (sensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); }
+  Serial.println();
+  delay(10);
+}
+
+// // Fetchs data from the TF_LUNA
 // void getTFminiData(int* distance, int* strength, float* temp) {
 //   static char i = 0;
 //   char j = 0;
@@ -180,16 +193,6 @@ void servo_pos(int angle){
 //   }
 //   flushSerial3();
 // }
-
-void getSharpData(int* distance){
-
-  *distance = sensor.readRangeContinuousMillimeters();
-  if (sensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); }
-  Serial.println();
-  delay(100);
-
-}
-
 
 // Flushes the INPUT serial buffer
 // void flushSerial3(){
